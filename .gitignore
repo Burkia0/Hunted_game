@@ -1,0 +1,26 @@
+# Build outputs
+_build/
+build/
+bin/
+*.o
+*.exe
+*.obj
+
+# IDE files
+.settings/
+.metadata/
+.cproject.bak
+*.cbp.bak
+
+# OS files
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Blender backup files
+*.blend1
+*.blend2
+
+# Eclipse local files
+# .project
+# .cproject
