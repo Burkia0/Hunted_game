@@ -38,6 +38,14 @@ void gCanvas::setup() {
 	character[5].loadImage("oyun/characters/player/karakter_guneybati.png");
 	character[6].loadImage("oyun/characters/player/karakter_bati.png");
 	character[7].loadImage("oyun/characters/player/karakter_kuzeybati.png");
+	ammo[0].loadImage("oyun/ammos/ammo_kuzey.png");
+	ammo[1].loadImage("oyun/ammos/ammo_kuzeydogu.png");
+	ammo[2].loadImage("oyun/ammos/ammo_dogu.png");
+	ammo[3].loadImage("oyun/ammos/ammo_guneydogu.png");
+	ammo[4].loadImage("oyun/ammos/ammo_guney.png");
+	ammo[5].loadImage("oyun/ammos/ammo_guneybati.png");
+	ammo[6].loadImage("oyun/ammos/ammo_bati.png");
+	ammo[7].loadImage("oyun/ammos/ammo_kuzeybati.png");
 	charw = character[0].getWidth() / 4.0f;
 	charh = character[0].getHeight() / 4.0f;
 	cx = (getWidth() - charw) / 2;
@@ -75,6 +83,7 @@ void gCanvas::setup() {
 void gCanvas::update() {
 	moveCharacter();
 	moveCamera();
+	updateBullets();
 
 	// Calculate direction index from mouse angle
 	float normalizedrot = crot;
@@ -255,6 +264,19 @@ void gCanvas::drawEntities() {
 			drawCharacter();
 		}
 	}
+
+	// Draw bullets on top
+	for (size_t i = 0; i < bullets.size(); i++) {
+		float drawx = bullets[i].worldx - BULLET_SIZE / 2.0f - camx;
+		float drawy = bullets[i].worldy - BULLET_SIZE / 2.0f - camy;
+		if (bullets[i].alpha < 1.0f) {
+			renderer->setColor(255, 255, 255, (int)(bullets[i].alpha * 255));
+		}
+		ammo[bullets[i].dirIndex].draw(drawx, drawy, BULLET_SIZE, BULLET_SIZE);
+		if (bullets[i].alpha < 1.0f) {
+			renderer->setColor(255, 255, 255, 255);
+		}
+	}
 }
 
 bool gCanvas::canMoveTo(float testcx, float testcy) {
@@ -321,12 +343,18 @@ void gCanvas::drawWater() {
 void gCanvas::drawMap() {
 	float halfw = TILE_W / 2.0f;
 	float halfh = TILE_H / 2.0f;
+	int pngw = grasstile.getWidth();
+	int pngh = grasstile.getHeight();
+	float screenw = getWidth();
+	float screenh = getHeight();
+
 	for (int row = 0; row < MAP_ROWS; row++) {
 		for (int col = 0; col < MAP_COLS; col++) {
 			float centerx = mapbasex + (col - row) * halfw;
 			float centery = mapbasey + (col + row) * halfh;
 			float drawx = centerx - TILE_OFFSET_X - camx;
 			float drawy = centery - TILE_OFFSET_Y - camy;
+			if (drawx + pngw < 0 || drawx > screenw || drawy + pngh < 0 || drawy > screenh) continue;
 			grasstile.draw(drawx, drawy);
 		}
 	}
@@ -334,6 +362,85 @@ void gCanvas::drawMap() {
 
 void gCanvas::drawCharacter() {
 	character[characterdir].draw(cx, cy, charw, charh);
+}
+
+void gCanvas::fireBullet(int mousex, int mousey) {
+	float charcenterx = cx + charw / 2.0f + camx;
+	float charcentery = cy + charh / 2.0f + camy;
+
+	float targetx = mousex + camx;
+	float targety = mousey + camy;
+
+	float dx = targetx - charcenterx;
+	float dy = targety - charcentery;
+	float len = std::sqrt(dx * dx + dy * dy);
+	if (len < 0.001f) return;
+	dx /= len;
+	dy /= len;
+
+	Bullet b;
+	b.worldx = charcenterx;
+	b.worldy = charcentery;
+	b.velx = dx * BULLET_SPEED;
+	b.vely = dy * BULLET_SPEED;
+	b.alive = true;
+	b.alpha = 1.0f;
+
+	float angle = gRadToDeg(std::atan2(dy, dx)) + 90.0f;
+	while (angle < 0.0f) angle += 360.0f;
+	while (angle >= 360.0f) angle -= 360.0f;
+	b.dirIndex = ((int)((angle + 22.5f) / 45.0f)) % 8;
+
+	bullets.push_back(b);
+}
+
+void gCanvas::updateBullets() {
+	for (size_t i = 0; i < bullets.size(); i++) {
+		if (!bullets[i].alive) continue;
+
+		bullets[i].worldx += bullets[i].velx;
+		bullets[i].worldy += bullets[i].vely;
+
+		// Harita siniri kontrolu — disarida ise kademeli solma
+		float relx = bullets[i].worldx - mapbasex;
+		float rely = bullets[i].worldy - mapbasey;
+		float halfw = TILE_W / 2.0f;
+		float halfh = TILE_H / 2.0f;
+		float fcol = (relx / halfw + rely / halfh) / 2.0f;
+		float frow = (rely / halfh - relx / halfw) / 2.0f;
+
+		// Harita disindan ne kadar uzakta (piksel cinsinden)
+		float outsidedist = 0.0f;
+		if (fcol < 0.0f) outsidedist = std::max(outsidedist, -fcol * halfw);
+		if (fcol >= MAP_COLS) outsidedist = std::max(outsidedist, (fcol - MAP_COLS) * halfw);
+		if (frow < 0.0f) outsidedist = std::max(outsidedist, -frow * halfh);
+		if (frow >= MAP_ROWS) outsidedist = std::max(outsidedist, (frow - MAP_ROWS) * halfh);
+
+		if (outsidedist > 0.0f) {
+			bullets[i].alpha = 1.0f - (outsidedist / BULLET_FADE_DIST);
+			if (bullets[i].alpha <= 0.0f) {
+				bullets[i].alive = false;
+				continue;
+			}
+		}
+
+		// Bina collision
+		for (size_t j = 0; j < obstacles.size(); j++) {
+			if (bullets[i].worldx >= obstacles[j].x &&
+				bullets[i].worldx <= obstacles[j].x + obstacles[j].w &&
+				bullets[i].worldy >= obstacles[j].y &&
+				bullets[i].worldy <= obstacles[j].y + obstacles[j].h) {
+				bullets[i].alive = false;
+				break;
+			}
+		}
+	}
+
+	bullets.erase(
+		std::remove_if(bullets.begin(), bullets.end(),
+			[](const Bullet& b) { return !b.alive; }),
+		bullets.end()
+	);
 }
 
 void gCanvas::keyPressed(int key) {
@@ -389,6 +496,9 @@ void gCanvas::mouseDragged(int x, int y, int button) {
 }
 
 void gCanvas::mousePressed(int x, int y, int button) {
+	if (button == 0) {
+		fireBullet(x, y);
+	}
 }
 
 void gCanvas::mouseReleased(int x, int y, int button) {

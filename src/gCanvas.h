@@ -14,6 +14,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstdlib>
+#include <cmath>
 
 
 struct Obstacle {
@@ -24,6 +25,14 @@ struct BuildingInstance {
 	int imageIndex;
 	int col, row;
 	float worldx, worldy;
+};
+
+struct Bullet {
+	float worldx, worldy;
+	float velx, vely;
+	int dirIndex;
+	bool alive;
+	float alpha; // 1.0 = opaque, fades to 0 outside map
 };
 
 
@@ -74,6 +83,11 @@ private:
 	// Building constants
 	static const int BUILDING_COUNT = 24;
 
+	// Bullet constants
+	static constexpr float BULLET_SPEED = 12.0f;
+	static const int BULLET_SIZE = 16; // mermi cizim boyutu (piksel)
+	static constexpr float BULLET_FADE_DIST = 150.0f; // harita disinda solma mesafesi (piksel)
+
 	void moveCharacter();
 	void moveCamera();
 	bool canMoveTo(float testcx, float testcy);
@@ -82,6 +96,8 @@ private:
 	void drawMap();
 	void drawEntities();
 	void drawCharacter();
+	void fireBullet(int mousex, int mousey);
+	void updateBullets();
 
 	gApp* root;
 	gImage grasstile;
@@ -101,6 +117,8 @@ private:
 	float camleftmargin, camrightmargin;
 	float mincamx, mincamy, maxcamx, maxcamy;
 	std::vector<Obstacle> obstacles;
+	std::vector<Bullet> bullets;
+	gImage ammo[DIR_COUNT];
 };
 
 #endif /* GCANVAS_H_ */
