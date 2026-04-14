@@ -46,6 +46,14 @@ void gCanvas::setup() {
 	ammo[5].loadImage("oyun/ammos/ammo_guneybati.png");
 	ammo[6].loadImage("oyun/ammos/ammo_bati.png");
 	ammo[7].loadImage("oyun/ammos/ammo_kuzeybati.png");
+	zombieSprites[0].loadImage("oyun/characters/enemy/zombi_kuzey.png");
+	zombieSprites[1].loadImage("oyun/characters/enemy/zombi_kuzeydogu.png");
+	zombieSprites[2].loadImage("oyun/characters/enemy/zombi_dogu.png");
+	zombieSprites[3].loadImage("oyun/characters/enemy/zombi_guneydogu.png");
+	zombieSprites[4].loadImage("oyun/characters/enemy/zombi_guney.png");
+	zombieSprites[5].loadImage("oyun/characters/enemy/zombi_guneybati.png");
+	zombieSprites[6].loadImage("oyun/characters/enemy/zombi_bati.png");
+	zombieSprites[7].loadImage("oyun/characters/enemy/zombi_kuzeybati.png");
 	charw = character[0].getWidth() / 4.0f;
 	charh = character[0].getHeight() / 4.0f;
 	cx = (getWidth() - charw) / 2;
@@ -77,6 +85,8 @@ void gCanvas::setup() {
 	maxcamx = mapwidth - getWidth();
 	maxcamy = mapheight - getHeight();
 
+	spawnTimer = 0.0f;
+
 	placeBuildings();
 }
 
@@ -84,6 +94,13 @@ void gCanvas::update() {
 	moveCharacter();
 	moveCamera();
 	updateBullets();
+
+	spawnTimer += 1.0f / 60.0f;
+	if (spawnTimer >= SPAWN_INTERVAL) {
+		spawnTimer = 0.0f;
+		spawnZombies();
+	}
+	updateZombies();
 
 	// Calculate direction index from mouse angle
 	float normalizedrot = crot;
@@ -246,6 +263,16 @@ void gCanvas::drawEntities() {
 	charitem.index = 0;
 	items.push_back(charitem);
 
+	// Add zombies to draw list
+	for (size_t i = 0; i < zombies.size(); i++) {
+		if (!zombies[i].alive) continue;
+		DrawItem zitem;
+		zitem.sortY = zombies[i].worldy;
+		zitem.type = 2;
+		zitem.index = (int)i;
+		items.push_back(zitem);
+	}
+
 	// Sort by world Y, lower Y drawn first (further from camera)
 	std::sort(items.begin(), items.end(), [](const DrawItem& a, const DrawItem& b) {
 		return a.sortY < b.sortY;
@@ -260,8 +287,13 @@ void gCanvas::drawEntities() {
 			float drawx = bi.worldx - (bw / 2.0f) - camx;
 			float drawy = bi.worldy - bh + (TILE_H / 2.0f) - camy;
 			buildings[bi.imageIndex].draw(drawx, drawy, bw, bh);
-		} else {
+		} else if (items[i].type == 1) {
 			drawCharacter();
+		} else if (items[i].type == 2) {
+			Zombie& z = zombies[items[i].index];
+			float drawx = z.worldx - ZOMBIE_SIZE / 2.0f - camx;
+			float drawy = z.worldy - ZOMBIE_SIZE - camy;
+			zombieSprites[z.dirIndex].draw(drawx, drawy, ZOMBIE_SIZE, ZOMBIE_SIZE);
 		}
 	}
 
@@ -434,6 +466,20 @@ void gCanvas::updateBullets() {
 				break;
 			}
 		}
+
+		// Zombi collision
+		if (bullets[i].alive) {
+			for (size_t k = 0; k < zombies.size(); k++) {
+				if (!zombies[k].alive) continue;
+				float zdx = bullets[i].worldx - zombies[k].worldx;
+				float zdy = bullets[i].worldy - zombies[k].worldy;
+				if (zdx * zdx + zdy * zdy < (ZOMBIE_SIZE / 2.0f) * (ZOMBIE_SIZE / 2.0f)) {
+					bullets[i].alive = false;
+					zombies[k].alive = false;
+					break;
+				}
+			}
+		}
 	}
 
 	bullets.erase(
@@ -441,6 +487,108 @@ void gCanvas::updateBullets() {
 			[](const Bullet& b) { return !b.alive; }),
 		bullets.end()
 	);
+	zombies.erase(
+		std::remove_if(zombies.begin(), zombies.end(),
+			[](const Zombie& z) { return !z.alive; }),
+		zombies.end()
+	);
+}
+
+bool gCanvas::canEntityMoveTo(float worldx, float worldy) {
+	float relx = worldx - mapbasex;
+	float rely = worldy - mapbasey;
+	float halfw = TILE_W / 2.0f;
+	float halfh = TILE_H / 2.0f;
+	float fcol = (relx / halfw + rely / halfh) / 2.0f;
+	float frow = (rely / halfh - relx / halfw) / 2.0f;
+	if (fcol < 0.0f || fcol >= MAP_COLS || frow < 0.0f || frow >= MAP_ROWS) return false;
+
+	for (size_t i = 0; i < obstacles.size(); i++) {
+		if (worldx >= obstacles[i].x && worldx <= obstacles[i].x + obstacles[i].w &&
+			worldy >= obstacles[i].y && worldy <= obstacles[i].y + obstacles[i].h) {
+			return false;
+		}
+	}
+	return true;
+}
+
+void gCanvas::spawnZombies() {
+	int spawnCorners[3][2] = { {98, 98}, {98, 2}, {2, 98} };
+	float halfw = TILE_W / 2.0f;
+	float halfh = TILE_H / 2.0f;
+
+	for (int i = 0; i < SPAWN_PER_TICK; i++) {
+		if ((int)zombies.size() >= MAX_ZOMBIES) return;
+		int corner = std::rand() % 3;
+		int col = spawnCorners[corner][0];
+		int row = spawnCorners[corner][1];
+		Zombie z;
+		z.worldx = mapbasex + (col - row) * halfw;
+		z.worldy = mapbasey + (col + row) * halfh;
+		z.dirIndex = 0;
+		z.alive = true;
+		z.avoidCounter = 0;
+		z.avoidVelX = 0.0f;
+		z.avoidVelY = 0.0f;
+		zombies.push_back(z);
+	}
+}
+
+void gCanvas::updateZombies() {
+	float playerWorldX = cx + charw / 2.0f + camx;
+	float playerWorldY = cy + charh / 2.0f + camy;
+
+	for (size_t i = 0; i < zombies.size(); i++) {
+		if (!zombies[i].alive) continue;
+
+		float dx, dy;
+		if (zombies[i].avoidCounter > 0) {
+			dx = zombies[i].avoidVelX;
+			dy = zombies[i].avoidVelY;
+			zombies[i].avoidCounter--;
+		} else {
+			dx = playerWorldX - zombies[i].worldx;
+			dy = playerWorldY - zombies[i].worldy;
+			float len = std::sqrt(dx * dx + dy * dy);
+			if (len > 0.001f) {
+				dx = (dx / len) * ZOMBIE_SPEED;
+				dy = (dy / len) * ZOMBIE_SPEED;
+			}
+		}
+
+		bool moved = false;
+		float newx = zombies[i].worldx + dx;
+		if (canEntityMoveTo(newx, zombies[i].worldy)) {
+			zombies[i].worldx = newx;
+			moved = true;
+		}
+		float newy = zombies[i].worldy + dy;
+		if (canEntityMoveTo(zombies[i].worldx, newy)) {
+			zombies[i].worldy = newy;
+			moved = true;
+		}
+
+		if (!moved && zombies[i].avoidCounter == 0) {
+			float toPlayerX = playerWorldX - zombies[i].worldx;
+			float toPlayerY = playerWorldY - zombies[i].worldy;
+			float len = std::sqrt(toPlayerX * toPlayerX + toPlayerY * toPlayerY);
+			if (len > 0.001f) {
+				float perpX = -toPlayerY / len;
+				float perpY = toPlayerX / len;
+				if (std::rand() % 2 == 0) { perpX = -perpX; perpY = -perpY; }
+				zombies[i].avoidVelX = perpX * ZOMBIE_SPEED;
+				zombies[i].avoidVelY = perpY * ZOMBIE_SPEED;
+				zombies[i].avoidCounter = 30;
+			}
+		}
+
+		float angDx = playerWorldX - zombies[i].worldx;
+		float angDy = playerWorldY - zombies[i].worldy;
+		float angle = gRadToDeg(std::atan2(angDy, angDx)) + 90.0f;
+		while (angle < 0.0f) angle += 360.0f;
+		while (angle >= 360.0f) angle -= 360.0f;
+		zombies[i].dirIndex = ((int)((angle + 22.5f) / 45.0f)) % 8;
+	}
 }
 
 void gCanvas::keyPressed(int key) {

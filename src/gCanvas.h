@@ -35,6 +35,14 @@ struct Bullet {
 	float alpha; // 1.0 = opaque, fades to 0 outside map
 };
 
+struct Zombie {
+	float worldx, worldy;
+	int dirIndex;
+	bool alive;
+	int avoidCounter;
+	float avoidVelX, avoidVelY;
+};
+
 
 class gCanvas : public gBaseCanvas {
 public:
@@ -85,8 +93,15 @@ private:
 
 	// Bullet constants
 	static constexpr float BULLET_SPEED = 12.0f;
-	static const int BULLET_SIZE = 16; // mermi cizim boyutu (piksel)
-	static constexpr float BULLET_FADE_DIST = 150.0f; // harita disinda solma mesafesi (piksel)
+	static const int BULLET_SIZE = 16;
+	static constexpr float BULLET_FADE_DIST = 150.0f;
+
+	// Zombie constants
+	static const int MAX_ZOMBIES = 36;
+	static constexpr float ZOMBIE_SPEED = 2.0f;
+	static const int ZOMBIE_SIZE = 64;
+	static constexpr float SPAWN_INTERVAL = 5.0f;
+	static const int SPAWN_PER_TICK = 3;
 
 	void moveCharacter();
 	void moveCamera();
@@ -98,6 +113,9 @@ private:
 	void drawCharacter();
 	void fireBullet(int mousex, int mousey);
 	void updateBullets();
+	bool canEntityMoveTo(float worldx, float worldy);
+	void spawnZombies();
+	void updateZombies();
 
 	gApp* root;
 	gImage grasstile;
@@ -119,6 +137,9 @@ private:
 	std::vector<Obstacle> obstacles;
 	std::vector<Bullet> bullets;
 	gImage ammo[DIR_COUNT];
+	std::vector<Zombie> zombies;
+	gImage zombieSprites[DIR_COUNT];
+	float spawnTimer;
 };
 
 #endif /* GCANVAS_H_ */
